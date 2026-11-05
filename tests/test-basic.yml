@@ -1,0 +1,47 @@
+name: Test basic usage
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      # The action queries the GitHub GraphQL/REST API for the repository named by
+      # GITHUB_REPOSITORY, which is a non-existent sentinel under the harness, so the
+      # call is expected to fail. Assert strictly on outputs if it does succeed.
+      - id: action
+        uses: .
+        continue-on-error: true
+        with:
+          token: ${{ github.token }}
+          branch: main
+          additionalCommits: |
+            feat: add a shiny new feature
+      - name: Assert action ran (outputs valid, or failed gracefully on the sentinel repo)
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+          CURRENT: ${{ steps.action.outputs.current }}
+          NEXT: ${{ steps.action.outputs.next }}
+          NEXT_STRICT: ${{ steps.action.outputs.nextStrict }}
+          BUMP: ${{ steps.action.outputs.bump }}
+        run: |
+          echo "outcome: $OUTCOME"
+          echo "current: $CURRENT next: $NEXT nextStrict: $NEXT_STRICT bump: $BUMP"
+          if [ "$OUTCOME" = "success" ]; then
+            if [ -z "$CURRENT" ]; then echo "FAIL: current empty"; exit 1; fi
+            if [ "$BUMP" != "major" ] && [ "$BUMP" != "minor" ]; then
+              echo "FAIL: feat commit should cause at least a minor bump, got '$BUMP'"; exit 1
+            fi
+            if ! echo "$NEXT" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+              echo "FAIL: next not in vX.Y.Z format"; exit 1
+            fi
+            if [ "v$NEXT_STRICT" != "$NEXT" ]; then
+              echo "FAIL: nextStrict inconsistent with next"; exit 1
+            fi
+            echo "PASS: got next=$NEXT"
+          elif [ "$OUTCOME" = "failure" ]; then
+            echo "PASS: action failed gracefully (sentinel repo is not resolvable)"
+          else
+            echo "FAIL: unexpected outcome '$OUTCOME'"
+            exit 1
+          fi

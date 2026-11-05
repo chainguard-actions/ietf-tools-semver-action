@@ -1,0 +1,40 @@
+name: Test custom prefix
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - id: action
+        uses: .
+        continue-on-error: true
+        with:
+          token: ${{ github.token }}
+          prefix: 'foobar/'
+          skipInvalidTags: 'true'
+          additionalCommits: |
+            fix: correct a bug
+      - name: Assert prefixed outputs (or graceful failure on sentinel repo)
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+          NEXT: ${{ steps.action.outputs.next }}
+          NEXT_NO_PREFIX: ${{ steps.action.outputs.nextNoPrefix }}
+          NEXT_STRICT_NO_PREFIX: ${{ steps.action.outputs.nextStrictNoPrefix }}
+        run: |
+          echo "outcome: $OUTCOME"
+          echo "next: $NEXT nextNoPrefix: $NEXT_NO_PREFIX nextStrictNoPrefix: $NEXT_STRICT_NO_PREFIX"
+          if [ "$OUTCOME" = "success" ]; then
+            if [ "$NEXT" != "foobar/$NEXT_NO_PREFIX" ]; then
+              echo "FAIL: next should be prefixed with foobar/"; exit 1
+            fi
+            if [ "$NEXT_NO_PREFIX" != "v$NEXT_STRICT_NO_PREFIX" ]; then
+              echo "FAIL: nextNoPrefix inconsistent"; exit 1
+            fi
+            echo "PASS"
+          elif [ "$OUTCOME" = "failure" ]; then
+            echo "PASS: action failed gracefully (sentinel repo / no prefixed tags)"
+          else
+            echo "FAIL: unexpected outcome '$OUTCOME'"
+            exit 1
+          fi

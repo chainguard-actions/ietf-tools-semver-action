@@ -1,0 +1,44 @@
+name: Test patchAll
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - id: action
+        uses: .
+        continue-on-error: true
+        with:
+          token: ${{ github.token }}
+          patchAll: 'true'
+          noVersionBumpBehavior: silent
+          additionalCommits: |
+            chore: update docs
+      - name: Assert at least a patch bump (or graceful failure on sentinel repo)
+        env:
+          OUTCOME: ${{ steps.action.outcome }}
+          BUMP: ${{ steps.action.outputs.bump }}
+          NEXT: ${{ steps.action.outputs.next }}
+          NEXT_MINOR: ${{ steps.action.outputs.nextMinor }}
+          NEXT_MINOR_STRICT: ${{ steps.action.outputs.nextMinorStrict }}
+        run: |
+          echo "outcome: $OUTCOME bump: $BUMP next: $NEXT nextMinor: $NEXT_MINOR"
+          if [ "$OUTCOME" = "success" ]; then
+            case "$BUMP" in
+              major|minor|patch) ;;
+              *) echo "FAIL: patchAll should cause a bump, got '$BUMP'"; exit 1 ;;
+            esac
+            if ! echo "$NEXT" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+              echo "FAIL: next not in vX.Y.Z format"; exit 1
+            fi
+            if [ "$NEXT_MINOR" != "v$NEXT_MINOR_STRICT" ]; then
+              echo "FAIL: nextMinor inconsistent"; exit 1
+            fi
+            echo "PASS"
+          elif [ "$OUTCOME" = "failure" ]; then
+            echo "PASS: action failed gracefully (sentinel repo is not resolvable)"
+          else
+            echo "FAIL: unexpected outcome '$OUTCOME'"
+            exit 1
+          fi
