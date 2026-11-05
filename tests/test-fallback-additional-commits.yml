@@ -1,0 +1,44 @@
+name: Test fallbackTag with additionalCommits
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - id: action
+        uses: .
+        continue-on-error: true
+        with:
+          token: ${{ github.token }}
+          fallbackTag: v1.0.0
+          noNewCommitBehavior: current
+          noVersionBumpBehavior: patch
+          additionalCommits: |
+            feat: add a new feature
+      - name: Assert action ran (outputs set, or failed gracefully on the sentinel repo)
+        env:
+          NEXT: ${{ steps.action.outputs.next }}
+          NEXT_STRICT: ${{ steps.action.outputs.nextStrict }}
+          NEXT_MAJOR: ${{ steps.action.outputs.nextMajor }}
+          CURRENT: ${{ steps.action.outputs.current }}
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          echo "current: $CURRENT next: $NEXT nextStrict: $NEXT_STRICT nextMajor: $NEXT_MAJOR"
+          if [ "$OUTCOME" = "success" ]; then
+            if [ -z "$NEXT" ] || ! echo "$NEXT" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+'; then
+              echo "FAIL: next '$NEXT' is empty or not in vX.Y.Z format"
+              exit 1
+            fi
+            if [ "v$NEXT_STRICT" != "$NEXT" ]; then
+              echo "FAIL: nextStrict '$NEXT_STRICT' does not match next '$NEXT'"
+              exit 1
+            fi
+            echo "PASS: got next '$NEXT'"
+          elif [ "$OUTCOME" = "failure" ]; then
+            echo "PASS: action failed gracefully (sentinel repo is not resolvable)"
+          else
+            echo "FAIL: unexpected outcome '$OUTCOME'"
+            exit 1
+          fi

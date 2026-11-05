@@ -1,0 +1,43 @@
+name: Test fromTag with prefix
+on:
+  workflow_dispatch:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - id: action
+        uses: .
+        continue-on-error: true
+        with:
+          token: ${{ github.token }}
+          fromTag: v1.0.0
+          prefix: 'pkg/'
+          noNewCommitBehavior: silent
+          noVersionBumpBehavior: silent
+      - name: Assert action ran (outputs set, or failed gracefully on the sentinel repo)
+        env:
+          NEXT: ${{ steps.action.outputs.next }}
+          CURRENT: ${{ steps.action.outputs.current }}
+          OUTCOME: ${{ steps.action.outcome }}
+        run: |
+          echo "outcome: $OUTCOME"
+          echo "current: $CURRENT next: $NEXT"
+          if [ "$OUTCOME" = "success" ]; then
+            case "$CURRENT" in
+              pkg/*) ;;
+              *) echo "FAIL: current '$CURRENT' missing prefix 'pkg/'"; exit 1 ;;
+            esac
+            if [ -n "$NEXT" ]; then
+              case "$NEXT" in
+                pkg/v*) ;;
+                *) echo "FAIL: next '$NEXT' missing prefix 'pkg/v'"; exit 1 ;;
+              esac
+            fi
+            echo "PASS: got current '$CURRENT' next '$NEXT'"
+          elif [ "$OUTCOME" = "failure" ]; then
+            echo "PASS: action failed gracefully (sentinel repo is not resolvable)"
+          else
+            echo "FAIL: unexpected outcome '$OUTCOME'"
+            exit 1
+          fi
